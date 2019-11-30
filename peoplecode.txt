@@ -1,0 +1,57 @@
+/*************************************************************************************/
+/* Function to Get ADFS User ID Information from SAMLResponse Header                 */
+/*************************************************************************************/
+Function ADFS_AUTHENTICATIO()
+   
+   Local JavaObject &SAML_Validate;
+   Local string &Redirect_URL;
+   
+   &SAML_Validate = GetJavaClass("saml.saml.ADFSSAMLResponseValidator");
+   
+   /* Check if Login Successful and Public User */
+   If %PSAuthResult = True And
+         %SignonUserId = "UM_SSO" Then
+      
+      /* Set Local variables */
+      Local string &requestParameter, &decodeResult, &sFormattedXML, &userID;
+      Local object &samlDecode;
+      Local XmlDoc &xmldoc;
+      Local array of XmlNode &xmlNode;
+      Local boolean &SAML_Valid = False;
+         
+      &requestParameter = %Request.GetParameter("SAMLResponse");
+      
+      /* Decode the Base64 SAMLResponse Using PeopleSoft's Pluggable Cryptography Technology (Doc ID 790153.1) */
+      &samlDecode = CreateObject("Crypt");
+      &samlDecode.Open("BASE64_DECODE");
+      &samlDecode.UpdateData(&requestParameter);
+      &decodeResult = &samlDecode.Result;
+      
+      &Redirect_URL = %Request.GetParameter("RelayState");
+      
+      /* Create the XML Doc from the &decodeResult String so we can search the xml for UserId */
+      If None(&decodeResult) Then
+         /* No Result Found */
+         SetAuthenticationResult( False);
+      Else      
+         &SAML_Valid = &SAML_Validate.GetInstance().ValidateSAMLResponse(&decodeResult);
+         
+         If Not &SAML_Valid Then
+            /* SAML validation Failed */
+            SetAuthenticationResult( False);
+         Else   
+            &decodeResult = "<?xml version=""1.0"" ?>" | &decodeResult;
+            &xmldoc = CreateXmlDoc(&decodeResult);
+            &sFormattedXML = &xmldoc.GenFormattedXmlString();
+            
+            /* Create the xmlNode from the xmlDoc */
+            &xmlNode = &xmldoc.GetElementsByTagName("NameID");
+            &userID = &xmlNode [1].NodeValue;
+            
+            /* Set Result and Login */
+            SetAuthenticationResult( True, &userID, &Redirect_URL, False);
+         End-If;
+      End-If;
+   End-If;
+   
+End-Function;
